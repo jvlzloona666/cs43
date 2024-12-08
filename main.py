@@ -45,27 +45,48 @@ def srt(processes):
     timeline = []
     current_time = 0
     remaining_time = {p['name']: p['cpu_cycle'] for p in processes}
-    process_queue = []
-    heapq.heapify(process_queue)
-    while processes or process_queue:
-        for p in processes:
-            if p['arrival_time'] <= current_time and p['name'] not in [x[1] for x in process_queue]:
-                heapq.heappush(process_queue, (p['cpu_cycle'], p['name']))
-        if process_queue:
-            cpu_cycle, name = heapq.heappop(process_queue)
-            process = next(p for p in processes if p['name'] == name)
-            remaining_time[name] -= 1
-            start_time = current_time
+    ready_queue = []
+    processes = sorted(processes, key=lambda x: x['arrival_time'])  # Ensure processes are sorted by arrival time
+
+    last_process = None  # Track the last process to detect preemption
+
+    while processes or ready_queue:
+        # Add all processes that have arrived by `current_time` to the ready queue
+        while processes and processes[0]['arrival_time'] <= current_time:
+            process = processes.pop(0)
+            heapq.heappush(ready_queue, (remaining_time[process['name']], process))
+
+        if ready_queue:
+            # Get the process with the shortest remaining time
+            remaining, process = heapq.heappop(ready_queue)
+            process_name = process['name']
+
+            # Check if preemption occurred
+            if last_process != process_name:
+                if last_process:
+                    # If a previous process was interrupted, record its time slice
+                    timeline[-1]['end'] = current_time
+                # Start a new time slice for the current process
+                timeline.append({'name': process_name, 'start': current_time, 'end': None})
+                last_process = process_name
+
+            # Execute the process for 1 time unit
+            remaining_time[process_name] -= 1
             current_time += 1
-            if remaining_time[name] > 0:
-                heapq.heappush(process_queue, (remaining_time[name], name))
+
+            # Check if the process is finished
+            if remaining_time[process_name] == 0:
+                # Complete the timeline entry for the finished process
+                timeline[-1]['end'] = current_time
             else:
-                end_time = current_time
-                timeline.append({'name': name, 'start': start_time, 'end': end_time})
-                processes.remove(process)
+                # Push the process back with updated remaining time
+                heapq.heappush(ready_queue, (remaining_time[process_name], process))
         else:
+            # No process is ready, increment time
             current_time += 1
+
     return timeline
+
 
 
 def round_robin(processes, quantum):
@@ -189,6 +210,14 @@ time_quantum_entry.grid(row=7, column=1, padx=5, pady=5)
 
 # Generate schedule button
 tk.Button(root, text="Generate Schedule", command=generate_schedule).grid(row=8, column=0, columnspan=4, pady=10)
+
+# First part of the text
+tk.Label(root, text="Please input '0' in arrival times for FCFS and SJN.", 
+         fg="blue").grid(row=10, column=0, columnspan=4, pady=5)
+
+# Second part of the text
+tk.Label(root, text="CS43 Project, Submitted by Josh Magdiel K. Villaluz", 
+         fg="blue").grid(row=11, column=0, columnspan=4, pady=5)
 
 # Frame for embedding the Gantt chart
 canvas_frame = tk.Frame(root, width=800, height=300)
