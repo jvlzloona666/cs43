@@ -4,9 +4,10 @@ from tkinter.ttk import Combobox
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import heapq  # For implementing SRT
 
 
-# Scheduling functions
+# Scheduling Functions
 def fcfs(processes):
     processes.sort(key=lambda x: x['arrival_time'])
     timeline = []
@@ -22,14 +23,79 @@ def fcfs(processes):
     return timeline
 
 
+def sjn(processes):
+    processes.sort(key=lambda x: (x['arrival_time'], x['cpu_cycle']))
+    timeline = []
+    current_time = 0
+    while processes:
+        ready_queue = [p for p in processes if p['arrival_time'] <= current_time]
+        if not ready_queue:
+            current_time = min(processes, key=lambda x: x['arrival_time'])['arrival_time']
+            continue
+        shortest = min(ready_queue, key=lambda x: x['cpu_cycle'])
+        processes.remove(shortest)
+        start_time = current_time
+        end_time = start_time + shortest['cpu_cycle']
+        timeline.append({'name': shortest['name'], 'start': start_time, 'end': end_time})
+        current_time = end_time
+    return timeline
+
+
+def srt(processes):
+    timeline = []
+    current_time = 0
+    remaining_time = {p['name']: p['cpu_cycle'] for p in processes}
+    process_queue = []
+    heapq.heapify(process_queue)
+    while processes or process_queue:
+        for p in processes:
+            if p['arrival_time'] <= current_time and p['name'] not in [x[1] for x in process_queue]:
+                heapq.heappush(process_queue, (p['cpu_cycle'], p['name']))
+        if process_queue:
+            cpu_cycle, name = heapq.heappop(process_queue)
+            process = next(p for p in processes if p['name'] == name)
+            remaining_time[name] -= 1
+            start_time = current_time
+            current_time += 1
+            if remaining_time[name] > 0:
+                heapq.heappush(process_queue, (remaining_time[name], name))
+            else:
+                end_time = current_time
+                timeline.append({'name': name, 'start': start_time, 'end': end_time})
+                processes.remove(process)
+        else:
+            current_time += 1
+    return timeline
+
+
+def round_robin(processes, quantum):
+    timeline = []
+    current_time = 0
+    process_queue = [p for p in processes]
+    while process_queue:
+        process = process_queue.pop(0)
+        remaining_time = process['cpu_cycle']
+        if remaining_time > quantum:
+            timeline.append({'name': process['name'], 'start': current_time, 'end': current_time + quantum})
+            current_time += quantum
+            process['cpu_cycle'] -= quantum
+            process_queue.append(process)
+        else:
+            timeline.append({'name': process['name'], 'start': current_time, 'end': current_time + remaining_time})
+            current_time += remaining_time
+            process['cpu_cycle'] = 0
+    return timeline
+
+
+# Gantt chart display
 # Gantt chart display
 def display_gantt_chart(timeline, canvas_frame):
     # Clear any existing chart
     for widget in canvas_frame.winfo_children():
         widget.destroy()
 
-    # Create a new matplotlib figure
-    fig, ax = plt.subplots(figsize=(8, 3))
+    # Create a new matplotlib figure with a larger size
+    fig, ax = plt.subplots(figsize=(10, 4))  # Increase figure size
 
     # Use different colors for each process
     colors = list(mcolors.TABLEAU_COLORS.values())
@@ -44,8 +110,11 @@ def display_gantt_chart(timeline, canvas_frame):
     ax.set_ylim(5, 25)
     ax.set_xlim(0, max_time)  # Use max time
     ax.set_xticks(range(0, max_time + 1))  # Whole numbers only
-    ax.set_xlabel('Time')
+    ax.set_xlabel('Time', fontsize=12)  # Increase font size for the label
     ax.set_yticks([])  # Hide Y-axis ticks
+
+    # Adjust layout to prevent labels from being cut off
+    plt.subplots_adjust(left=0.05, right=0.95, top=0.85, bottom=0.15)  # Adjust margins
 
     # Embed the chart in the tkinter window
     canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
@@ -73,15 +142,12 @@ def generate_schedule():
         if algorithm == "FCFS":
             timeline = fcfs(processes)
         elif algorithm == "SJN":
-            # Call SJN logic
-            raise NotImplementedError("SJN logic not implemented yet.")
+            timeline = sjn(processes)
         elif algorithm == "SRT":
-            # Call SRT logic
-            raise NotImplementedError("SRT logic not implemented yet.")
+            timeline = srt(processes)
         elif algorithm == "Round Robin":
             time_quantum = int(time_quantum_entry.get())
-            # Call Round Robin logic
-            raise NotImplementedError("Round Robin logic not implemented yet.")
+            timeline = round_robin(processes, time_quantum)
         else:
             raise ValueError("Select a valid scheduling algorithm.")
 
